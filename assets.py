@@ -17,7 +17,7 @@ from surface import SIZE, uv_for, texture_rgba
 
 MODEL = 'keyring_a'
 MOD_NAME = 'Keyring'
-VERSION = '0.3.0'
+VERSION = '0.3.1'
 IDENTITY = (1., 0., 0., 0., 1., 0., 0., 0., 1.)
 
 from mesh import geometry, components, collision_spheres, METALS
