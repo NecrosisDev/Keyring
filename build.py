@@ -32,7 +32,8 @@ def records_block(manifest: str) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--game', type=Path, default=Path(os.environ.get('EXANIMA_DIR', r'D:\SteamLibrary\steamapps\common\Exanima')))
+    parser.add_argument('--game', type=Path, default=os.environ.get('EXANIMA_DIR'), required=not os.environ.get('EXANIMA_DIR'),
+                        help='the Exanima folder (or set EXANIMA_DIR)')
     parser.add_argument('--workspace', type=Path, default=Path(os.environ['EXANIMATE_WORKSPACE']) if os.environ.get('EXANIMATE_WORKSPACE') else None,
                         required=not os.environ.get('EXANIMATE_WORKSPACE'))
     args = parser.parse_args()
