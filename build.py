@@ -1,6 +1,7 @@
 """Builds the ready-to-ship mod into dist/mods/com.necrosis.keyring from source.
 
-Reads the installed game's own members (database, strings, level 1 and the Key A01 model), runs assets.py
+Reads the installed game's own members (database, strings, level 1 and the Key A01 model), plus vanilla level 1 when
+the install keeps it (Hellmode does, in Resource.zip.001...), runs assets.py
 (the Keyring record, its model, textures and level-1 placement), then the Lua runtime's records_delta.py to cut
 the database down to this mod's [script.records] range, and assembles manifest, scripts, records and assets.
 Files already in the dist folder are overwritten; nothing else is touched.
@@ -14,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -23,6 +25,21 @@ STRING_RANGE = ('1201', '1216')
 INPUTS = {'objdb.rdb': ('Resource.rpk', 'objdb.rdb'), 'objstrings.rdb': ('Resource.rpk', 'objstrings.rdb'),
           'exanima01.rfc': ('Resource.rpk', 'exanima01.rfc'), 'key-a01.rfc': ('Objects.rpk', 'key a01')}
 SHIPPED_ASSETS = ('Objects/keyring_a', 'Textures/kr_brass_d', 'Textures/kr_hoop_d', 'Textures/kr_iron_d')
+
+
+def vanilla_resource(game: Path, into: Path) -> Path | None:
+    """Hellmode installs keep the vanilla Resource.rpk as the one member of Resource.zip.001...; None elsewhere."""
+    parts = sorted(game.glob('Resource.zip.0*'))
+    if not parts:
+        return None
+    joined = into / 'vanilla-resource.zip'
+    with joined.open('wb') as out:
+        for part in parts:
+            out.write(part.read_bytes())
+    with zipfile.ZipFile(joined) as archive:
+        (into / 'Resource.rpk').write_bytes(archive.read(archive.namelist()[0]))
+    joined.unlink()
+    return into / 'Resource.rpk'
 
 
 def records_block(manifest: str) -> str:
@@ -54,6 +71,11 @@ def main() -> int:
         inputs.mkdir()
         for name, (archive, member) in INPUTS.items():
             (inputs / name).write_bytes(rpk.read(args.game / archive, member))
+        vanilla = vanilla_resource(args.game, stage)
+        if vanilla:
+            layout = inputs / 'layouts' / 'vanilla'
+            layout.mkdir(parents=True)
+            (layout / 'exanima01.rfc').write_bytes(rpk.read(vanilla, 'exanima01.rfc'))
         built = assets.build(inputs, stage / 'full')
         subprocess.run([sys.executable, '-X', 'utf8', '-B', str(delta_tool), '--game', str(args.game),
                         '--full', str(built / 'assets/packages/Resource'), '--ids', *ID_RANGE, '--strings', *STRING_RANGE,

@@ -1,7 +1,15 @@
 -- The ring lying in level 1 is added by the runtime when the game reads the level (built by assets.py).
+-- Vanilla and Hellmode lay level 1 out differently; placement.lua has a spot for each, keyed by the installed
+-- level file's size, and an unknown layout gets no ring rather than one floating in the wrong room.
 local built, placement = pcall(require, "placement")   -- absent when the script runs without its build (tests)
 if built and api.has_capability("levels.serve") then
-    levels.add_placement(placement.level, placement.item, placement.position, placement.yaw or 0)
+    local installed = levels.read(placement.level, "Resource.rpk")
+    local spot = installed and placement.spots[#installed]
+    if spot then
+        levels.add_placement(placement.level, placement.item, spot.position, spot.yaw or 0)
+    else
+        log.warn("level 1 has a layout this build does not know: the keyring is not placed there (it still drops as loot)")
+    end
 elseif built then
     log.warn("levels.serve is unavailable: the keyring is not placed in level 1 (it still drops as loot)")
 end
