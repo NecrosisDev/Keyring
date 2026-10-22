@@ -1,58 +1,84 @@
-# Keyring 0.3.0 — Lua addon candidate
+# Keyring
 
-The keyring now ships as assets and `scripts/main.lua`, without a per-addon DLL
-or activator EXE. One shared Exanima Lua Runtime DLL provides the reviewed
-engine operations and starts through EMTK. ExaniMate and ExCamera are not required.
+Adds a key ring to Exanima. Put your keys on the ring, then use the ring on a
+locked door: if one of its keys fits, the door unlocks.
 
-The download is the standalone addon. Pair it with the
-separate current Lua runtime package, which carries its framework update.
-Older combined bundles are archived; avoid copying their older runtime over a
-newer one. The builder below can still produce a combined developer bundle.
+## Features
 
-## Install and use
+- A new item, the **Keyring**: a dark iron hoop with two worn display keys, one
+  iron and one brass. It starts empty.
+- Use the ring on itself in your inventory to open its storage, and put your
+  keys in.
+- Close the storage, then use the ring on a locked door. If a key on the ring
+  fits, the door unlocks. A wrong key gets the game's usual response.
+- Only ordinary keys placed directly on the ring count. The two display keys
+  are decoration, and a ring stored inside another ring does not lend its keys.
+- Where to find one: lying on a table in the first level, and as loot in
+  civilians' personal belongings.
 
-With Exanima closed and a pre-mod save backup preserved, copy the package's
-`mods` folder into Exanima. Install the runtime package's framework update beside
-the EMTK launcher once, after backing up its existing DLL. Keep your own framework
-if it already supports this script-startup interface. Enable both **Exanima
-Lua Runtime** and **Keyring** in the profile, then launch normally.
+## Requirements
 
-The supplied disabled legacy config.toml prevents an older extracted
-Keyring.dll from loading. Leave it in place when upgrading. There is no game
-version or executable-hash allowlist; the runtime checks its required operations.
-This does not establish support for arbitrary changed native layouts.
+- Exanima (Steam).
+- EMTK with the script-runtime startup patch. The Exanima Lua Runtime's README
+  explains how to get it.
+- Exanima Lua Runtime 0.28.0 or newer.
 
-The empty ring is placed in Story Level 1, about 12 cm beside Key B01, and in
-civilian personal-loot tables. Already-generated saved levels do not gain the
-placement automatically. Use the ring on itself in inventory to open storage;
-add keys, close storage, then use the ring on a locked door. Only this ring's
-direct committed ordinary keys participate. Wrong keys use native feedback.
-Removed rows, nested rings and decorative mesh keys do not grant access.
+## Install
 
-The hoop is dark iron, with two different worn display keys in iron and brass.
-Both mesh resolutions share the physics-settled pose. Display keys are geometry,
-not items; the container starts empty.
+1. Install the Exanima Lua Runtime and its EMTK patch first, following the
+   runtime's instructions.
+2. Download `Keyring-<version>.zip` from the Releases page.
+3. Close Exanima.
+4. Copy the ZIP's `mods` folder into your Exanima game folder. You should end
+   up with `Exanima\mods\com.necrosis.keyring`.
+5. In your EMTK profile, enable both **Exanima Lua Runtime** and **Keyring**.
+6. Launch the game through EMTK.
 
-## Compatibility and building
+## Saves and uninstalling
 
-The mod ships only its own records (`[script.records]`); the runtime merges them
-into the installed database, so no whole database or level file is replaced.
-The builder reads key IDs, placement anchor and sizes from the installed game
-instead of a fixed key list.
+Back up your saves before installing. The Lua runtime also makes a backup at
+the title menu, but keep your own.
+
+The ring on the table is added when the game builds the first level. A level
+your save has already generated keeps its saved copy, so in an existing game
+you will only find the ring as loot.
+
+Once you pick up a ring, it is an item in your save. Keep the mod enabled for
+any save that contains a ring, or go back to a save from before you installed
+it. Deleting the mod's files does not remove the ring from existing saves.
+
+## Notes for modders
+
+The mod ships only its own item record and strings through the runtime's
+`[script.records]` (item ID `0x590`, string indices 1201 to 1216), plus a loot
+entry added to two civilian personal loot tables. The runtime merges these into
+the installed database, so no whole database or level file is replaced. The
+table placement is added through `levels.add_placement`.
+
+## Building from source
+
+The build reads the installed game (its database, strings, first level and the
+Key A01 model), so it needs an installed copy of Exanima. It also needs an
+ExaniMate workspace, which provides the `tools/exanimate` format library and the
+Lua runtime's `records_delta.py` (in `mods/script-runtime/`).
 
 ```powershell
-python -X utf8 -B release.py --workspace <Exanimate workspace> [--game <Exanima folder>]
+python -X utf8 -B release.py --workspace <ExaniMate workspace> --game <Exanima folder>
 ```
 
-This builds `dist/mods/com.necrosis.keyring/` through `build.py` (which reads the
-installed game and the workspace's ExaniMate library and records-delta tool) and
-writes `dist/Keyring-<version>.zip` with its SHA256. The Lua runtime ships as its
-own package.
+`--game` and `--workspace` can also come from the `EXANIMA_DIR` and
+`EXANIMATE_WORKSPACE` environment variables. The build writes:
 
-Keep this mod enabled for saves containing its item, or restore a pre-mod save
-when removing it. Deleting files does not migrate existing saves.
+- `dist/mods/com.necrosis.keyring/`
+- `dist/Keyring-<version>.zip` with a `.sha256` beside it
 
-Owned-process tests run real Lua, simulated game records/calls and real hook
-chaining. They do not establish in-game startup, rendering, door use, combined
-mod behavior or save/load acceptance. The existing ExaniMate editor/file APIs
-remain unchanged; this adds the synchronous in-process scripting layer.
+A previous `dist/mods/com.necrosis.keyring/` is moved to `dist/previous/` first.
+Other options:
+
+- `--zip-only` packages the mod folder already in `dist/` without building.
+- `--tag v<version>` stops unless the tag matches the version in
+  `manifest.toml`.
+
+## License
+
+MIT (see [LICENSE](LICENSE)).
