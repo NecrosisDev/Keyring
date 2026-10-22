@@ -153,7 +153,7 @@ def build(inputs, output):
         colour,gloss=METALS[material['name']]
         material['pbrMetallicRoughness'].update(baseColorFactor=[*colour,1.],metallicFactor=.85,roughnessFactor=1.-gloss)
     (meshes / 'keyring-game.gltf').write_text(json.dumps(gltf), encoding='utf-8')
-    (mod / 'manifest.toml').write_text(f'[plugin]\nname = "{MOD_NAME}"\nversion = "{VERSION}"\n\n[script]\nruntime = "com.necrosis.script-runtime"\nentry = "scripts/main.lua"\nrequires = ["events.item_use", "items.read", "containers.read", "containers.open", "doors.unlock"]\noptional = ["levels.serve"]\n\n[script.modules]\nplacement = "scripts/placement.lua"\n')
+    (mod / 'manifest.toml').write_text(f'[plugin]\nname = "{MOD_NAME}"\nversion = "{VERSION}"\ncategory = "Gameplay"\n\n[script]\nruntime = "com.necrosis.script-runtime"\nentry = "scripts/main.lua"\nrequires = ["events.item_use", "items.read", "containers.read", "containers.open", "doors.unlock"]\noptional = ["levels.serve"]\n\n[script.modules]\nplacement = "scripts/placement.lua"\n')
     # This disabled legacy config also prevents an older extracted DLL from competing.
     (mod / 'config.toml').write_text(f'[plugin]\nid = "com.necrosis.keyring"\nname = "{MOD_NAME}"\nversion = "{VERSION}"\nsupported_versions = []\nurl = ""\nenabled = false\n[plugin.author]\nname = "NecrosisDev"\n')
     scripts=mod/'scripts'
