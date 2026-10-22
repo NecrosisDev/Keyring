@@ -1,0 +1,19 @@
+[plugin]
+name = "Keyring"
+version = "0.3.0"
+category = "Gameplay"
+
+[script]
+runtime = "com.necrosis.script-runtime"
+entry = "scripts/main.lua"
+requires = ["events.item_use", "items.read", "containers.read", "containers.open", "doors.unlock"]
+optional = ["levels.serve"]
+
+[script.modules]
+placement = "scripts/placement.lua"
+
+[script.records]
+ids = [0x590, 0x590]
+strings = [1201, 1216]
+objdb = "records/objdb.rdb"
+objstrings = "records/objstrings.rdb"

@@ -35,20 +35,19 @@ not items; the container starts empty.
 
 ## Compatibility and building
 
-Whole-member database, strings and first-level replacements still require
-composition. Repeat `--merge-mod <folder>` in load order to add the ring after
-selected Resource inputs. Conflicts between those inputs must already be
-resolved. Preserve composed item IDs across saves. The builder reads key IDs,
-placement anchor and sizes from its inputs instead of a fixed key list.
+The mod ships only its own records (`[script.records]`); the runtime merges them
+into the installed database, so no whole database or level file is replaced.
+The builder reads key IDs, placement anchor and sizes from the installed game
+instead of a fixed key list.
 
 ```powershell
-python -B <runtime>/build.py --out <runtime-out>
-python -B build.py --inputs <inputs> --runtime-candidate <runtime-out> --emtk-startup <emtk-checkout> --out <new folder>
+python -X utf8 -B release.py --workspace <Exanimate workspace> [--game <Exanima folder>]
 ```
 
-Omit --runtime-candidate to build the shared runtime during packaging. The
-framework checkout needs the supplied patch and a matching startup-test receipt.
-Source, licenses and build instructions accompany the framework update.
+This builds `dist/mods/com.necrosis.keyring/` through `build.py` (which reads the
+installed game and the workspace's ExaniMate library and records-delta tool) and
+writes `dist/Keyring-<version>.zip` with its SHA256. The Lua runtime ships as its
+own package.
 
 Keep this mod enabled for saves containing its item, or restore a pre-mod save
 when removing it. Deleting files does not migrate existing saves.

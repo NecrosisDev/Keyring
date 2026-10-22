@@ -1,17 +1,21 @@
-"""Packages the Keyring release from dist/mods/com.necrosis.keyring/: dist/Keyring-<version>.zip and its .sha256.
+"""Builds the Keyring release: dist/mods/com.necrosis.keyring/ and dist/Keyring-<version>.zip
+with a .sha256 beside it.
 
-    python -X utf8 -B release.py [--tag v<version>]
+    python -X utf8 -B release.py [--zip-only] [--tag v<version>] [build.py options]
 
 The ZIP holds mods/com.necrosis.keyring/ as EMTK loads it from the Exanima folder. Its entries carry a fixed
-timestamp, so the same files always give the same SHA256. This repository cannot rebuild the mod folder yet:
-build.py still expects the workspace layout it was imported from, and the manifest and placement script exist
-only in dist/. So this packages the mod folder as it stands. --tag stops unless the tag is v<manifest version>.
+timestamp, so the same files always give the same SHA256. Before building, the previous mod folder is moved to
+dist/previous/, so the ZIP holds only what this build wrote. --zip-only packages the mod folder as it stands.
+--tag stops unless the tag is v<manifest version>. Other options go to build.py, which reads the installed
+game, so this release is built locally rather than by CI.
 """
 import argparse
 import hashlib
 import re
+import subprocess
 import sys
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -20,11 +24,23 @@ MOD_ID = 'com.necrosis.keyring'
 DIST = ROOT / 'dist'
 
 
+def assemble(extra: list[str]) -> None:
+    subprocess.run([sys.executable, '-X', 'utf8', '-B', str(ROOT / 'build.py'), *extra], check=True)
+
+
 def version(mod: Path) -> str:
     match = re.search(r'^version = "([^"]+)"', (mod / 'manifest.toml').read_text(encoding='utf-8'), re.M)
     if not match:
         raise SystemExit(f'{mod / "manifest.toml"} has no version line')
     return match.group(1)
+
+
+def set_aside(mod: Path) -> None:
+    if mod.exists():
+        target = DIST / 'previous' / f'{mod.name}-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}'
+        target.parent.mkdir(parents=True, exist_ok=True)
+        mod.rename(target)
+        print(f'previous build moved to {target}')
 
 
 def package(mod: Path, name: str) -> Path:
@@ -43,9 +59,15 @@ def package(mod: Path, name: str) -> Path:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('--zip-only', action='store_true', help='package the mod folder already in dist/')
     parser.add_argument('--tag', help='release tag; must be v<manifest version>')
-    args = parser.parse_args()
+    args, extra = parser.parse_known_args()
     mod = DIST / 'mods' / MOD_ID
+    if args.zip_only and extra:
+        parser.error('builder options need a build, not --zip-only')
+    if not args.zip_only:
+        set_aside(mod)
+        assemble(extra)
     if not (mod / 'manifest.toml').is_file():
         raise SystemExit(f'no built mod in {mod}')
     if args.tag and args.tag != f'v{version(mod)}':

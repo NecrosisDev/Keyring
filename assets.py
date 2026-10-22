@@ -1,15 +1,18 @@
-"""Build a keyring project from offline snapshots; never accesses a game install."""
+"""Build a keyring project from offline snapshots; never accesses a game install.
+
+The ExaniMate format library is found through EXANIMATE_TOOLS (its tools/exanimate folder); build.py sets it."""
 import copy
 import hashlib
 import json
 import math
+import os
 import struct
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / 'tools/exanimate'))
-from exanimate import level, rdb, rfc, rfi
+if os.environ.get('EXANIMATE_TOOLS'):
+    sys.path.insert(0, os.environ['EXANIMATE_TOOLS'])
+from exanimate import level, rdb, rfc, rfi  # noqa: E402
 from surface import SIZE, uv_for, texture_rgba
 
 MODEL = 'keyring_a'
@@ -159,7 +162,7 @@ def build(inputs, output):
     scripts=mod/'scripts'
     scripts.mkdir()
     (scripts/'main.lua').write_bytes(Path(__file__).with_name('scripts').joinpath('main.lua').read_bytes())
-    (scripts/'placement.lua').write_text(placement, encoding='utf-8')
+    (scripts/'placement.lua').write_text(placement, encoding='utf-8', newline='\n')
     changed = [r.id for r in db.records if r.id in before and r.data != before[r.id]]
     assert sorted(changed) == sorted(t.id for t in tables)
     assert not (resources / 'exanima01.rfc').exists()

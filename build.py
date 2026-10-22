@@ -1,97 +1,83 @@
-"""Build the script-based keyring with the shared Lua runtime; never installs files."""
+"""Builds the ready-to-ship mod into dist/mods/com.necrosis.keyring from source.
+
+Reads the installed game's own members (database, strings, level 1 and the Key A01 model), runs assets.py
+(the Keyring record, its model, textures and level-1 placement), then the Lua runtime's records_delta.py to cut
+the database down to this mod's [script.records] range, and assembles manifest, scripts, records and assets.
+Files already in the dist folder are overwritten; nothing else is touched.
+
+    python -X utf8 -B build.py [--game <Exanima folder>] [--workspace <Exanimate workspace>]
+"""
 import argparse
-import hashlib
-import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
-import zipfile
 from pathlib import Path
-import assets
-from exanimate import rpk  # assets puts tools/exanimate on the path
 
-SOURCE=Path(__file__).resolve().parent
-ROOT=SOURCE.parents[1]
-RUNTIME=ROOT/'mods/script-runtime'
+ROOT = Path(__file__).resolve().parent
+MOD_ID = 'com.necrosis.keyring'
+ID_RANGE = ('0x590', '0x590')
+STRING_RANGE = ('1201', '1216')
+INPUTS = {'objdb.rdb': ('Resource.rpk', 'objdb.rdb'), 'objstrings.rdb': ('Resource.rpk', 'objstrings.rdb'),
+          'exanima01.rfc': ('Resource.rpk', 'exanima01.rfc'), 'key-a01.rfc': ('Objects.rpk', 'key a01')}
+SHIPPED_ASSETS = ('Objects/keyring_a', 'Textures/kr_brass_d', 'Textures/kr_hoop_d', 'Textures/kr_iron_d')
 
-def digest(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 
-def main():
-    parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--inputs',type=Path,required=True)
-    parser.add_argument('--out',type=Path,required=True)
-    parser.add_argument('--merge-mod',type=Path,action='append',default=[])
-    parser.add_argument('--runtime-candidate',type=Path,help='reuse a matching verified shared-runtime build')
-    parser.add_argument('--emtk-startup',type=Path,help='bundle the compiled Lua-aware EMTK framework update')
-    parser.add_argument('--game',type=Path,default=os.environ.get('EXANIMA_DIR'),
-        help='installed game folder (or EXANIMA_DIR): level 1 is always read from its Resource.rpk, the level the game loads')
-    args=parser.parse_args();out=args.out.resolve()
-    if out.exists() or out.is_relative_to(ROOT/'release'):parser.error('use a new candidate folder outside release/')
-    if not args.game or not (args.game/'Resource.rpk').is_file():parser.error('--game (or EXANIMA_DIR) must name the installed game folder')
-    inputs=args.inputs.resolve()
-    # Level 1 never comes from --inputs or another mod: an exanima01.rfc from an older game build there once
-    # replaced the installed (Hellmode) level wholesale. Other mods' placements in it are not merged.
-    merged=Path(tempfile.mkdtemp(prefix='Keyring-Merged-'))
-    for name in ('objdb.rdb','objstrings.rdb','key-a01.rfc'):shutil.copyfile(inputs/name,merged/name)
-    for source in args.merge_mod:
-        resources=source/'assets/packages/Resource'
-        if not resources.is_dir():parser.error(f'missing Resource directory: {resources}')
-        for name in ('objdb.rdb','objstrings.rdb'):
-            if (resources/name).is_file():shutil.copyfile(resources/name,merged/name)
-    (merged/'exanima01.rfc').write_bytes(rpk.read(args.game.resolve()/'Resource.rpk','exanima01.rfc'))
-    inputs=merged
-    mod=assets.build(inputs,out)
-    subprocess.run([sys.executable,'-B',str(SOURCE/'test_assets.py'),str(out)],check=True)
-    native=args.runtime_candidate.resolve() if args.runtime_candidate else out/'runtime-build'
-    if not args.runtime_candidate:
-        subprocess.run([sys.executable,'-B',str(RUNTIME/'build.py'),'--out',str(native)],check=True)
-    proof=json.loads((native/'verification.json').read_text())
-    assert proof['native_tests']=='passed'
-    assert proof['keyring_script_sha256']==digest(SOURCE/'scripts/main.lua')
-    for name,expected in proof['files'].items():assert digest(native/name)==expected,name
-    native_mod=native/'mods/com.necrosis.script-runtime'
-    for file in (RUNTIME/'src').iterdir():assert digest(native_mod/'source'/file.name)==digest(file),file.name
-    assert digest(native_mod/'source/shared/game_structs.h')==digest(ROOT/'continuation/game_structs.h'),'shared field definitions'
-    for original,name in [('game_layout.h','game_layout.h'),('game_signatures.h','game_signatures.h'),('npc/npc_live.h','npc_live.h'),('hotload.h','hotload.h')]:
-        assert digest(native_mod/'source/shared'/name)==digest(ROOT/'continuation'/original),name
-    shutil.copytree(native_mod,out/'mods/com.necrosis.script-runtime')
-    shutil.copytree(SOURCE/'scripts',mod/'source/scripts')
-    for name in ('assets.py','mesh.py','surface.py','world_pose.json','bake_world.py','refresh_material_preview.py'):
-        shutil.copyfile(SOURCE/name,mod/'source'/name)
-    shutil.copytree(out/'meshes',mod/'source-meshes')
-    shutil.copyfile(SOURCE/'README.md',mod/'README.md')
-    shutil.copyfile(ROOT/'LICENSE',mod/'LICENSE')
-    roots=[out/'mods']
-    if args.emtk_startup:
-        toolkit=args.emtk_startup.resolve();update=out/'EMTK-framework-update';update.mkdir()
-        framework=toolkit/'target/release/emtk_framework.dll'
-        startup=json.loads((toolkit/'startup-verification.json').read_text())
-        assert startup['result']=='passed' and startup['framework_sha256']==digest(framework)
-        assert startup['native_plugin_sha256']==digest(native_mod/'ScriptRuntime.dll')
-        for name in ('LICENSE-MIT','LICENSE-APACHE'):shutil.copyfile(toolkit/name,update/name)
-        shutil.copyfile(framework,update/framework.name)
-        for name in ('emtk-startup.patch','EMTK-STARTUP.md','test_startup.py'):shutil.copyfile(RUNTIME/name,update/name)
-        shutil.copytree(RUNTIME/'test_fixture',update/'test_fixture')
-        shutil.copyfile(toolkit/'startup-verification.json',update/'startup-verification.json')
-        (update/'INSTALL.txt').write_text('With Exanima closed, back up emtk_framework.dll beside your EMTK launcher.\nCopy this framework DLL beside that launcher once. Install the ZIP mods folder into Exanima.\nEnable Exanima Lua Runtime and Keyring in the profile, then launch normally through EMTK.\nNo addon EXE is required. Retain your current framework if it already supports this script API.\nUse the supplied disabled legacy keyring config to prevent an older Keyring.dll from loading.\nTo roll back the framework, restore its backup with Exanima closed. Save compatibility is separate.\n')
-        (update/'SOURCE.json').write_text(json.dumps({'upstream':'https://github.com/ExanimaModding/Toolkit',
-            'revision':subprocess.check_output(['git','rev-parse','HEAD'],cwd=toolkit,text=True).strip(),
-            'patch_sha256':digest(RUNTIME/'emtk-startup.patch'),'framework_sha256':digest(framework),
-            'acceptance':'owned-process native/script startup; game unverified'},indent=2))
-        roots.append(update)
-    files={p.relative_to(out).as_posix():digest(p) for root in roots for p in sorted(root.rglob('*')) if p.is_file()}
-    (out/'verification.json').write_text(json.dumps({'native_tests':'passed','lua_version':proof['lua_version'],
-        'files':files,'status':'offline candidate; game startup and gameplay unverified'},indent=2))
-    archive=out/f'Keyring-{assets.VERSION}-Lua-candidate.zip'
-    with zipfile.ZipFile(archive,'x',zipfile.ZIP_DEFLATED) as z:
-        for name in files:z.write(out/name,name)
-    with zipfile.ZipFile(archive) as z:
-        assert z.testzip() is None
-        for name in z.namelist():assert z.read(name)==(out/name).read_bytes()
-        assert not any(name.lower().endswith('.exe') or name.endswith('/Keyring.dll') for name in z.namelist())
-        assert 'mods/com.necrosis.keyring/scripts/main.lua' in z.namelist()
-    print('LUA_KEYRING_PACKAGE_PASSED='+str(archive))
+def records_block(manifest: str) -> str:
+    match = re.search(r'^\[script\.records\]\n(?:[^\[\n].*\n?)*', manifest, re.M)
+    return match.group(0).strip() if match else ''
 
-if __name__=='__main__':main()
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('--game', type=Path, default=Path(os.environ.get('EXANIMA_DIR', r'D:\SteamLibrary\steamapps\common\Exanima')))
+    parser.add_argument('--workspace', type=Path, default=Path(os.environ['EXANIMATE_WORKSPACE']) if os.environ.get('EXANIMATE_WORKSPACE') else None,
+                        required=not os.environ.get('EXANIMATE_WORKSPACE'))
+    args = parser.parse_args()
+    tools = args.workspace / 'tools' / 'exanimate'
+    delta_tool = args.workspace / 'mods' / 'script-runtime' / 'records_delta.py'
+    for needed in (tools, delta_tool, args.game / 'Resource.rpk', args.game / 'Objects.rpk'):
+        if not needed.exists():
+            parser.error(f'missing {needed}')
+    os.environ['EXANIMATE_TOOLS'] = str(tools)
+    sys.path.insert(0, str(tools))
+    from exanimate import rpk
+    import assets
+
+    dist = ROOT / 'dist' / 'mods' / MOD_ID
+    with tempfile.TemporaryDirectory(prefix='keyring-dist-') as staging:
+        stage = Path(staging)
+        inputs = stage / 'inputs'
+        inputs.mkdir()
+        for name, (archive, member) in INPUTS.items():
+            (inputs / name).write_bytes(rpk.read(args.game / archive, member))
+        built = assets.build(inputs, stage / 'full')
+        subprocess.run([sys.executable, '-X', 'utf8', '-B', str(delta_tool), '--game', str(args.game),
+                        '--full', str(built / 'assets/packages/Resource'), '--ids', *ID_RANGE, '--strings', *STRING_RANGE,
+                        '--out', str(stage / 'delta')], check=True)
+
+        # manifest.toml and scripts/placement.lua are kept in source; a build that would change them stops here.
+        manifest = (ROOT / 'manifest.toml').read_text(encoding='utf-8')
+        if records_block(manifest) != (stage / 'delta' / 'manifest-records.toml').read_text(encoding='utf-8').strip():
+            raise SystemExit('manifest.toml [script.records] no longer matches the built records; update it')
+        if (built / 'scripts/placement.lua').read_bytes() != (ROOT / 'scripts/placement.lua').read_bytes():
+            raise SystemExit('scripts/placement.lua no longer matches the built placement; update it')
+
+        for folder in ('scripts', 'records', 'assets/packages/Objects', 'assets/packages/Textures'):
+            (dist / folder).mkdir(parents=True, exist_ok=True)
+        for name in ('main.lua', 'placement.lua'):
+            shutil.copyfile(ROOT / 'scripts' / name, dist / 'scripts' / name)
+        for name in ('objdb.rdb', 'objstrings.rdb'):
+            shutil.copyfile(stage / 'delta' / 'records' / name, dist / 'records' / name)
+        for name in SHIPPED_ASSETS:
+            shutil.copyfile(built / 'assets/packages' / name, dist / 'assets/packages' / name)
+        for name in ('manifest.toml', 'LICENSE'):
+            shutil.copyfile(ROOT / name, dist / name)
+    print(f'KEYRING_BUILT={dist}')
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
