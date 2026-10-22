@@ -2,3 +2,12 @@ __pycache__/
 *.pyc
 .claude/
 /dist/
+
+# Kept on disk, not published: development notes, tests and tools that do not build the mod
+/EMTK-STARTUP.md
+/emtk-startup.patch
+/refresh_material_preview.py
+/test_assets.py
+/test_merge.py
+/test_startup.py
+/test_fixture/

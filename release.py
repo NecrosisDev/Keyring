@@ -7,11 +7,13 @@ The ZIP holds mods/com.necrosis.keyring/ as EMTK loads it from the Exanima folde
 timestamp, so the same files always give the same SHA256. Before building, the previous mod folder is moved to
 dist/previous/, so the ZIP holds only what this build wrote. --zip-only packages the mod folder as it stands.
 --tag stops unless the tag is v<manifest version>. Other options go to build.py, which reads the installed
-game, so this release is built locally rather than by CI.
+game, so this release is built locally rather than by CI: the ZIP and its .sha256 are also copied to release/,
+which is committed, and a version tag publishes that copy.
 """
 import argparse
 import hashlib
 import re
+import shutil
 import subprocess
 import sys
 import zipfile
@@ -56,6 +58,13 @@ def package(mod: Path, name: str) -> Path:
     print(f'RELEASE={archive} files={len(files)} sha256={digest}')
     return archive
 
+def keep_for_release(archive: Path) -> None:
+    # CI cannot build this mod (the build reads the installed game), so a version tag publishes this committed copy.
+    folder = ROOT / 'release'
+    folder.mkdir(exist_ok=True)
+    for path in (archive, archive.with_name(archive.name + '.sha256')):
+        shutil.copyfile(path, folder / path.name)
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -72,7 +81,7 @@ def main() -> int:
         raise SystemExit(f'no built mod in {mod}')
     if args.tag and args.tag != f'v{version(mod)}':
         raise SystemExit(f'tag {args.tag} does not match manifest version {version(mod)}')
-    package(mod, NAME)
+    keep_for_release(package(mod, NAME))
     return 0
 
 

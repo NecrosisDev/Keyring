@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# This mod's build reads the installed game, so release.py runs on the author's PC and commits
+# release/Keyring-<version>.zip with its .sha256. CI checks that copy and publishes it on a version tag.
+jobs:
+  check:
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Check the committed release ZIPs against their SHA256 files
+        working-directory: release
+        run: sha256sum -c *.sha256
+
+  release:
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # A tag with a hyphen (v0.2.0-rc1) publishes a prerelease. An existing release is never replaced.
+      - name: Publish the committed ZIP for this tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          zip="Keyring-${GITHUB_REF_NAME#v}.zip"
+          if [[ ! -f "release/$zip" ]]; then
+            echo "::error::release/$zip is not committed; run release.py and commit release/"
+            exit 1
+          fi
+          (cd release && sha256sum -c "$zip.sha256")
+          flags=(--verify-tag --title "Keyring $GITHUB_REF_NAME" --generate-notes)
+          [[ "$GITHUB_REF_NAME" == *-* ]] && flags+=(--prerelease)
+          gh release create "$GITHUB_REF_NAME" "release/$zip" "release/$zip.sha256" --repo "$GITHUB_REPOSITORY" "${flags[@]}"
