@@ -3,29 +3,16 @@ name: Release
 on:
   push:
     branches: [main]
-    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# This mod's build reads the installed game, so release.py runs on the author's PC and commits
-# release/Keyring-<version>.zip with its .sha256. CI checks that copy and publishes it on a version tag.
+# The build reads the installed game, so release.py runs on the author's PC and commits
+# release/Keyring-<version>.zip with its .sha256; CI checks that copy and publishes it.
 jobs:
-  check:
-    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - name: Check the committed release ZIPs against their SHA256 files
-        working-directory: release
-        run: sha256sum -c *.sha256
-
   release:
-    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -33,17 +20,27 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      # A tag with a hyphen (v0.2.0-rc1) publishes a prerelease. An existing release is never replaced.
-      - name: Publish the committed ZIP for this tag
+      - name: Check the committed release ZIP against its SHA256 file
+        working-directory: release
+        run: sha256sum -c *.sha256
+      # A push to main whose manifest version has no release yet tags v<version> and publishes it; later pushes
+      # with the same version publish nothing. Bump the version in manifest.toml to release again.
+      - name: Release a new version
+        if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          zip="Keyring-${GITHUB_REF_NAME#v}.zip"
-          if [[ ! -f "release/$zip" ]]; then
-            echo "::error::release/$zip is not committed; run release.py and commit release/"
-            exit 1
-          fi
-          (cd release && sha256sum -c "$zip.sha256")
-          flags=(--verify-tag --title "Keyring $GITHUB_REF_NAME" --generate-notes)
-          [[ "$GITHUB_REF_NAME" == *-* ]] && flags+=(--prerelease)
-          gh release create "$GITHUB_REF_NAME" "release/$zip" "release/$zip.sha256" --repo "$GITHUB_REPOSITORY" "${flags[@]}"
+          release() {  # <manifest> <tag prefix> <title> <assets...>
+            version=$(tr -d '\r' < "$1" | sed -nE 's/^version = "([^"]+)"$/\1/p' | head -n1)
+            tag="$2$version"; title="$3 v$version"; shift 3
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+              echo "$tag is already released"; return 0
+            fi
+            flags=(--target "$GITHUB_SHA" --title "$title" --generate-notes)
+            [[ "$version" == *-* ]] && flags+=(--prerelease)
+            gh release create "$tag" "$@" --repo "$GITHUB_REPOSITORY" "${flags[@]}"
+          }
+          version=$(tr -d '\r' < manifest.toml | sed -nE 's/^version = "([^"]+)"$/\1/p' | head -n1)
+          zip="release/Keyring-$version.zip"
+          if [[ ! -f "$zip" ]]; then echo "::error::$zip is not committed; run release.py and commit release/"; exit 1; fi
+          release manifest.toml v "Keyring" "$zip" "$zip.sha256"
